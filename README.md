@@ -1,0 +1,2 @@
+# NBitcoin.SolarCoin
+NBitcoin.SolarCoin
