@@ -1,12 +1,29 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using NBitcoin.Crypto;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Utilities;
 
 namespace NBitcoin.SolarCoin
 {
+    public enum PrimaryActions : uint
+    {
+        // primary actions
+        SER_NETWORK = (1 << 0),
+        SER_DISK = (1 << 1),
+        SER_GETHASH = (1 << 2),
+
+        // modifiers
+        SER_SKIPSIG = (1 << 16),
+        SER_BLOCKHEADERONLY = (1 << 17),
+        SER_LEGACYPROTOCOL = (1 << 18),
+    }
+
     public class SolarCoinTransaction : Transaction
     {
         #region SolarTransaction
@@ -18,209 +35,18 @@ namespace NBitcoin.SolarCoin
 
         #endregion
 
-        private const uint OVERWINTER_BRANCH_ID = 0x5ba81b19;
-        private const uint OVERWINTER_VERSION = 3;
-        private const uint OVERWINTER_VERSION_GROUP_ID = 0x03C48270;
-        private const uint SAPLING_BRANCH_ID = 0x76b809bb;
-        private const uint SAPLING_VERSION = 4;
-        private const uint SAPLING_VERSION_GROUP_ID = 0x892f2085;
-        private const uint GROTH_PROOF_SIZE = 192;
-        private const uint ZC_SAPLING_ENCCIPHERTEXT_SIZE = 580;
-        private const uint ZC_SAPLING_OUTCIPHERTEXT_SIZE = 80;
-        private const byte G1_PREFIX_MASK = 0x02;
-        private const byte G2_PREFIX_MASK = 0x0a;
-        private const uint NOT_AN_INPUT = uint.MaxValue;
-
-        private class SolarCoinSpendDescription : IBitcoinSerializable
-        {
-            public uint256 cv;
-            public uint256 anchor;
-            public uint256 nullifier;
-            public uint256 rk;
-            public byte[] zkproof = new byte[GROTH_PROOF_SIZE];
-            public byte[] spendAuthSig = new byte[64];
-
-            public void ReadWrite(BitcoinStream stream)
-            {
-                stream.ReadWrite(ref cv);
-                stream.ReadWrite(ref anchor);
-                stream.ReadWrite(ref nullifier);
-                stream.ReadWrite(ref rk);
-                stream.ReadWrite(ref zkproof);
-                stream.ReadWrite(ref spendAuthSig);
-            }
-        }
-
-        private class SolarCoinOutputDescription : IBitcoinSerializable
-        {
-            public uint256 cv;
-            public uint256 cm;
-            public uint256 ephemeralKey;
-            public byte[] encCiphertext = new byte[ZC_SAPLING_ENCCIPHERTEXT_SIZE];
-            public byte[] outCiphertext = new byte[ZC_SAPLING_OUTCIPHERTEXT_SIZE];
-            public byte[] zkproof = new byte[GROTH_PROOF_SIZE];
-
-            public void ReadWrite(BitcoinStream stream)
-            {
-                stream.ReadWrite(ref cv);
-                stream.ReadWrite(ref cm);
-                stream.ReadWrite(ref ephemeralKey);
-                stream.ReadWrite(ref encCiphertext);
-                stream.ReadWrite(ref outCiphertext);
-                stream.ReadWrite(ref zkproof);
-            }
-        }
-
-        private class JSDescription : IBitcoinSerializable
-        {
-            public long vpub_old;
-            public long vpub_new;
-            public uint256 anchor;
-            public uint256[] nullifiers = { uint256.Zero, uint256.Zero };
-            public uint256[] commitments = { uint256.Zero, uint256.Zero };
-            public uint256 ephemeralKey;
-            public byte[][] ciphertexts = { new byte[601], new byte[601] };
-            public uint256 randomSeed = uint256.Zero;
-            public uint256[] macs = { uint256.Zero, uint256.Zero };
-            public byte[] grothProof = new byte[GROTH_PROOF_SIZE];
-            public PHGRProof phgrProof = new PHGRProof();
-
-            public void ReadWrite(BitcoinStream stream)
-            {
-                stream.ReadWrite(ref vpub_old);
-                stream.ReadWrite(ref vpub_new);
-                stream.ReadWrite(ref anchor);
-
-                stream.ReadWrite(ref nullifiers[0]);
-                stream.ReadWrite(ref nullifiers[1]);
-                stream.ReadWrite(ref commitments[0]);
-                stream.ReadWrite(ref commitments[1]);
-                stream.ReadWrite(ref ephemeralKey);
-                stream.ReadWrite(ref randomSeed);
-                stream.ReadWrite(ref macs[0]);
-                stream.ReadWrite(ref macs[1]);
-
-                if (((SolarCoinStream)stream).Version >= SAPLING_VERSION)
-                {
-                    stream.ReadWrite(ref grothProof);
-                }
-                else
-                {
-                    stream.ReadWrite(ref phgrProof);
-                }
-
-                stream.ReadWrite(ref ciphertexts[0]);
-                stream.ReadWrite(ref ciphertexts[1]);
-            }
-        }
-
-        private class PHGRProof : IBitcoinSerializable
-        {
-            public CompressedG1 g_A;
-            public CompressedG1 g_A_prime;
-            public CompressedG2 g_B;
-            public CompressedG1 g_B_prime;
-            public CompressedG1 g_C;
-            public CompressedG1 g_C_prime;
-            public CompressedG1 g_K;
-            public CompressedG1 g_H;
-
-            public void ReadWrite(BitcoinStream stream)
-            {
-                stream.ReadWrite(ref g_A);
-                stream.ReadWrite(ref g_A_prime);
-                stream.ReadWrite(ref g_B);
-                stream.ReadWrite(ref g_B_prime);
-                stream.ReadWrite(ref g_C);
-                stream.ReadWrite(ref g_C_prime);
-                stream.ReadWrite(ref g_K);
-                stream.ReadWrite(ref g_H);
-            }
-        }
-
-        private class CompressedG1 : IBitcoinSerializable
-        {
-            public bool y_lsb;
-            public uint256 x;
-
-            public void ReadWrite(BitcoinStream stream)
-            {
-                byte leadingByte = G1_PREFIX_MASK;
-
-                if (y_lsb)
-                {
-                    leadingByte |= 1;
-                }
-
-                stream.ReadWrite(ref leadingByte);
-
-                if ((leadingByte & (~1)) != G1_PREFIX_MASK)
-                {
-                    throw new InvalidOperationException("lead byte of G1 point not recognized");
-                }
-
-                y_lsb = (leadingByte & 1) == 1;
-
-                stream.ReadWrite(ref x);
-            }
-        }
-
-        private class CompressedG2 : IBitcoinSerializable
-        {
-            public bool y_gt;
-            public uint512 x;
-
-            public void ReadWrite(BitcoinStream stream)
-            {
-                byte leadingByte = G2_PREFIX_MASK;
-
-                if (y_gt)
-                {
-                    leadingByte |= 1;
-                }
-
-                stream.ReadWrite(ref leadingByte);
-
-                if ((leadingByte & (~1)) != G2_PREFIX_MASK)
-                {
-                    throw new InvalidOperationException("lead byte of G2 point not recognized");
-                }
-
-                y_gt = (leadingByte & 1) == 1;
-
-                BitcoinStreamExtensions.ReadWrite(stream, ref x);
-            }
-        }
-
-        private static readonly char[] SolarCoin_PREVOUTS_HASH_PERSONALIZATION = { 'Z', 'c', 'a', 's', 'h', 'P', 'r', 'e', 'v', 'o', 'u', 't', 'H', 'a', 's', 'h' };
-        private static readonly char[] SolarCoin_SEQUENCE_HASH_PERSONALIZATION = { 'Z', 'c', 'a', 's', 'h', 'S', 'e', 'q', 'u', 'e', 'n', 'c', 'H', 'a', 's', 'h' };
-        private static readonly char[] SolarCoin_OUTPUTS_HASH_PERSONALIZATION = { 'Z', 'c', 'a', 's', 'h', 'O', 'u', 't', 'p', 'u', 't', 's', 'H', 'a', 's', 'h' };
-        private static readonly char[] SolarCoin_JOINSPLITS_HASH_PERSONALIZATION = { 'Z', 'c', 'a', 's', 'h', 'J', 'S', 'p', 'l', 'i', 't', 's', 'H', 'a', 's', 'h' };
-        private static readonly char[] SolarCoin_SHIELDED_SPENDS_HASH_PERSONALIZATION = { 'Z', 'c', 'a', 's', 'h', 'S', 'S', 'p', 'e', 'n', 'd', 's', 'H', 'a', 's', 'h' };
-        private static readonly char[] SolarCoin_SHIELDED_OUTPUTS_HASH_PERSONALIZATION = { 'Z', 'c', 'a', 's', 'h', 'S', 'O', 'u', 't', 'p', 'u', 't', 'H', 'a', 's', 'h' };
-
-        private bool fOverwintered = false;
-        private uint nVersionGroupId = 0;
-        private uint? nBranchId = 0;
-        private uint nExpiryHeight = 0;
-        private long valueBalance = 0;
-        private List<SolarCoinSpendDescription> vShieldedSpend = new List<SolarCoinSpendDescription>();
-        private List<SolarCoinOutputDescription> vShieldedOutput = new List<SolarCoinOutputDescription>();
-        private List<JSDescription> vjoinsplit = new List<JSDescription>();
-        private uint256 joinSplitPubKey;
-
         public SolarCoinTransaction()
         {
-            Version = SAPLING_VERSION;
-            nVersionGroupId = SAPLING_VERSION_GROUP_ID;
+            Version = CURRENT_VERSION;
         }
 
-        public SolarCoinTransaction(string hex, uint? branchId = null) : base(hex)
+        public SolarCoinTransaction(string hex) : base(hex)
         {
-            nBranchId = branchId;
         }
 
         public uint NTime { get; protected set; }
+
+        public uint NType { get; protected set; }
 
         public string TransactionComment { get; protected set; }
 
@@ -232,132 +58,8 @@ namespace NBitcoin.SolarCoin
         public override uint256 GetSignatureHash(Script scriptCode, int nIn, SigHash nHashType, Money amount,
             HashVersion sigversion, PrecomputedTransactionData precomputedTransactionData)
         {
-            if (sigversion == HashVersion.Witness)
-            {
-                if (amount == null)
-                    throw new ArgumentException("The amount of the output being signed must be provided", "amount");
-                uint256 hashPrevouts = uint256.Zero;
-                uint256 hashSequence = uint256.Zero;
-                uint256 hashOutputs = uint256.Zero;
-
-                if ((nHashType & SigHash.AnyoneCanPay) == 0)
-                {
-                    hashPrevouts = precomputedTransactionData == null ?
-                                   GetHashPrevouts() : precomputedTransactionData.HashPrevouts;
-                }
-
-                if ((nHashType & SigHash.AnyoneCanPay) == 0 && ((uint)nHashType & 0x1f) != (uint)SigHash.Single && ((uint)nHashType & 0x1f) != (uint)SigHash.None)
-                {
-                    hashSequence = precomputedTransactionData == null ?
-                                   GetHashSequence() : precomputedTransactionData.HashSequence;
-                }
-
-                if (((uint)nHashType & 0x1f) != (uint)SigHash.Single && ((uint)nHashType & 0x1f) != (uint)SigHash.None)
-                {
-                    hashOutputs = precomputedTransactionData == null ?
-                                    GetHashOutputs() : precomputedTransactionData.HashOutputs;
-                }
-                else if (((uint)nHashType & 0x1f) == (uint)SigHash.Single && nIn < this.Outputs.Count)
-                {
-                    BitcoinStream ss = CreateHashWriter(sigversion);
-                    ss.ReadWrite(this.Outputs[nIn]);
-                    hashOutputs = GetHash(ss);
-                }
-
-                BitcoinStream sss = CreateHashWriter(sigversion);
-                // Version
-                sss.ReadWrite(this.Version);
-                // Input prevouts/nSequence (none/all, depending on flags)
-                sss.ReadWrite(hashPrevouts);
-                sss.ReadWrite(hashSequence);
-                // The input being signed (replacing the scriptSig with scriptCode + amount)
-                // The prevout may already be contained in hashPrevout, and the nSequence
-                // may already be contain in hashSequence.
-                sss.ReadWrite(Inputs[nIn].PrevOut);
-                sss.ReadWrite(scriptCode);
-                sss.ReadWrite(amount.Satoshi);
-                sss.ReadWrite((uint)Inputs[nIn].Sequence);
-                // Outputs (none/one/all, depending on flags)
-                sss.ReadWrite(hashOutputs);
-                // Locktime
-                sss.ReadWriteStruct(LockTime);
-                // Sighash type
-                sss.ReadWrite((uint)nHashType);
-
-                return GetHash(sss);
-            }
-
-            if (nIn >= Inputs.Count)
-            {
-                return uint256.One;
-            }
-
-            var hashType = nHashType & (SigHash)31;
-
-            // Check for invalid use of SIGHASH_SINGLE
-            if (hashType == SigHash.Single)
-            {
-                if (nIn >= Outputs.Count)
-                {
-                    return uint256.One;
-                }
-            }
-
-            var scriptCopy = new Script(scriptCode.ToBytes());
-            //scriptCopy = scriptCopy.(OpcodeType.OP_CODESEPARATOR);
-
-            var txCopy = GetConsensusFactory().CreateTransaction();
-            txCopy.FromBytes(this.ToBytes());
-            //Set all TxIn script to empty string
-            foreach (var txin in txCopy.Inputs)
-            {
-                txin.ScriptSig = new Script();
-            }
-            //Copy subscript into the txin script you are checking
-            txCopy.Inputs[nIn].ScriptSig = scriptCopy;
-
-            if (hashType == SigHash.None)
-            {
-                //The output of txCopy is set to a vector of zero size.
-                txCopy.Outputs.Clear();
-
-                //All other inputs aside from the current input in txCopy have their nSequence index set to zero
-                foreach (var input in txCopy.Inputs.Where((x, i) => i != nIn))
-                    input.Sequence = 0;
-            }
-            else if (hashType == SigHash.Single)
-            {
-                //The output of txCopy is resized to the size of the current input index+1.
-                txCopy.Outputs.RemoveRange(nIn + 1, txCopy.Outputs.Count - (nIn + 1));
-                //All other txCopy outputs aside from the output that is the same as the current input index are set to a blank script and a value of (long) -1.
-                for (var i = 0; i < txCopy.Outputs.Count; i++)
-                {
-                    if (i == nIn)
-                        continue;
-                    txCopy.Outputs[i] = new TxOut();
-                }
-                //All other txCopy inputs aside from the current input are set to have an nSequence index of zero.
-                foreach (var input in txCopy.Inputs.Where((x, i) => i != nIn))
-                    input.Sequence = 0;
-            }
-
-
-            if ((nHashType & SigHash.AnyoneCanPay) != 0)
-            {
-                //The txCopy input vector is resized to a length of one.
-                var script = txCopy.Inputs[nIn];
-                txCopy.Inputs.Clear();
-                txCopy.Inputs.Add(script);
-                //The subScript (lead in by its length as a var-integer encoded!) is set as the first and only member of this vector.
-                txCopy.Inputs[0].ScriptSig = scriptCopy;
-            }
-
-
-            //Serialize TxCopy, append 4 byte hashtypecode
-            var stream = CreateHashWriter(sigversion);
-            txCopy.ReadWrite(stream);
-            stream.ReadWrite((uint)nHashType);
-            return GetHash(stream);
+            //TODO: Find right algo
+            return uint256.Zero;
         }
 
         private BitcoinStream CreateHashWriter(HashVersion version)
@@ -398,11 +100,6 @@ namespace NBitcoin.SolarCoin
 
         public override void ReadWrite(BitcoinStream stream)
         {
-
-        }
-
-        public void ReadWriteOld(BitcoinStream stream)
-        {
             // we can't use "ref" keyword with properties,
             // so copy base class properties to new variables for value types,
             // and get references to reference types
@@ -416,15 +113,24 @@ namespace NBitcoin.SolarCoin
             var solarStream = new SolarCoinStream(stream.Inner, stream.Serializing);
 
             solarStream.ReadWriteVersionEncoded(ref nVersion);
-            //if (nVersion > LEGACY_VERSION_3)
-            solarStream.ReadWriteVersionEncoded(ref nTime);
+            if ((NType & (uint)(PrimaryActions.SER_GETHASH | PrimaryActions.SER_LEGACYPROTOCOL)) == 0 || 
+                nVersion > LEGACY_VERSION_3)
+            {
+                solarStream.ReadWriteVersionEncoded(ref nTime);
+            }
+            else if ((NType & (uint)PrimaryActions.SER_DISK) != 0)
+            {
+                solarStream.ReadWriteVersionEncoded(ref nTime);
+            }
 
             stream.ReadWrite<TxInList, TxIn>(ref vin);
-            var vinTransactionSetter = vin.GetType().GetProperty(nameof(vin.Transaction), BindingFlags.Instance);
-            vinTransactionSetter?.SetValue(vin, this);
+            Type vinType = vin.GetType();
+            //var vinTransactionSetter = vinType.GetProperty("Transaction", BindingFlags.Instance);
+            //vinTransactionSetter?.SetValue(vin, this);
+            ////vin.Transaction.
             stream.ReadWrite<TxOutList, TxOut>(ref vout);
-            var voutTransactionSetter = vout.GetType().GetProperty(nameof(vin.Transaction), BindingFlags.Instance);
-            voutTransactionSetter?.SetValue(vout, this);
+            //var voutTransactionSetter = vout.GetType().GetProperty("Transaction", BindingFlags.Instance);
+            //voutTransactionSetter?.SetValue(vout, this);
             solarStream.ReadWriteStruct(ref nLockTime);
 
             if (nVersion > LEGACY_VERSION_1)
@@ -438,6 +144,34 @@ namespace NBitcoin.SolarCoin
             }
         }
 
+        public uint256 GetHashCheat()
+        {
+            var previousType = this.NType;
+            this.NType = (uint)PrimaryActions.SER_GETHASH;
+            uint256 h = null;
+
+            //using (var cheat = new BLAKE2bWriter())
+            //{
+            //    this.ReadWrite(cheat);
+
+            //    h = cheat.GetHash();
+            //}
+
+            using (var hs = new HashStreamCheat())
+            {
+                this.ReadWrite(new BitcoinStream(hs, true)
+                {
+                    TransactionOptions = TransactionOptions.None,
+                    ConsensusFactory = GetConsensusFactory(),
+                });
+                h = hs.GetHash();
+            }
+
+            this.NType = previousType;
+
+            return h;
+        }
+
         protected override HashStreamBase CreateHashStream()
         {
             return new HashStream();
@@ -447,92 +181,180 @@ namespace NBitcoin.SolarCoin
         {
             return new HashStream();
         }
+    }
 
-        private uint256 GetHashOutputs()
+    /// <summary>
+    /// Double SHA256 hash stream
+    /// </summary>
+    public class HashStreamCheat : HashStreamBase
+    {
+        public HashStreamCheat()
         {
-            using (var ss = new BLAKE2bWriter(SolarCoin_OUTPUTS_HASH_PERSONALIZATION))
-            {
-                foreach (var txout in Outputs)
-                {
-                    ss.ReadWrite(txout);
-                }
 
-                return ss.GetHash();
+        }
+
+        public override bool CanRead
+        {
+            get
+            {
+                throw new NotImplementedException();
             }
         }
 
-        private uint256 GetHashSequence()
+        public override bool CanSeek
         {
-            using (var ss = new BLAKE2bWriter(SolarCoin_SEQUENCE_HASH_PERSONALIZATION))
+            get
             {
-                foreach (var input in Inputs)
-                {
-                    ss.ReadWrite((uint)input.Sequence);
-                }
-
-                return ss.GetHash();
+                throw new NotImplementedException();
             }
         }
 
-        private uint256 GetHashPrevouts()
+        public override bool CanWrite
         {
-            using (var ss = new BLAKE2bWriter(SolarCoin_PREVOUTS_HASH_PERSONALIZATION))
+            get
             {
-                foreach (var input in Inputs)
-                {
-                    ss.ReadWrite(input.PrevOut);
-                }
-
-                return ss.GetHash();
+                throw new NotImplementedException();
             }
         }
 
-        private uint256 GetJoinSplitsHash()
+        public override long Length
         {
-            using (var ss = new BLAKE2bWriter(SolarCoin_JOINSPLITS_HASH_PERSONALIZATION))
+            get
             {
-                // provide version info to joinSplit serializer
-                ss.Version = Version;
-
-                foreach (var js in vjoinsplit)
-                {
-                    ss.ReadWrite(js);
-                }
-
-                ss.ReadWrite(joinSplitPubKey);
-
-                return ss.GetHash();
+                throw new NotImplementedException();
             }
         }
 
-        private uint256 GetShieldedSpendsHash()
+        public override long Position
         {
-            using (var ss = new BLAKE2bWriter(SolarCoin_SHIELDED_SPENDS_HASH_PERSONALIZATION))
+            get
             {
-                foreach (var spend in vShieldedSpend)
-                {
-                    ss.ReadWrite(spend.cv);
-                    ss.ReadWrite(spend.anchor);
-                    ss.ReadWrite(spend.nullifier);
-                    ss.ReadWrite(spend.rk);
-                    ss.ReadWrite(ref spend.zkproof);
-                }
-
-                return ss.GetHash();
+                throw new NotImplementedException();
+            }
+            set
+            {
+                throw new NotImplementedException();
             }
         }
 
-        private uint256 GetShieldedOutputsHash()
+        public override void Flush()
         {
-            using (var ss = new BLAKE2bWriter(SolarCoin_SHIELDED_OUTPUTS_HASH_PERSONALIZATION))
-            {
-                foreach (var sout in vShieldedOutput)
-                {
-                    ss.ReadWrite(sout);
-                }
+            throw new NotImplementedException();
+        }
 
-                return ss.GetHash();
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new NotImplementedException();
+        }
+
+#if HAS_SPAN
+		public override void Write(ReadOnlySpan<byte> buffer)
+		{
+			int copied = 0;
+			int toCopy = 0;
+			var innerSpan = new Span<byte>(_Buffer, _Pos, _Buffer.Length - _Pos);
+			while(!buffer.IsEmpty)
+			{
+				toCopy = Math.Min(innerSpan.Length, buffer.Length);
+				buffer.Slice(0, toCopy).CopyTo(innerSpan.Slice(0, toCopy));
+				buffer = buffer.Slice(toCopy);
+				innerSpan = innerSpan.Slice(toCopy);
+				copied += toCopy;
+				_Pos += toCopy;
+				if(ProcessBlockIfNeeded())
+					innerSpan = _Buffer.AsSpan();
+			}
+		}
+#endif
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            int copied = 0;
+            int toCopy = 0;
+            while (copied != count)
+            {
+                toCopy = Math.Min(_Buffer.Length - _Pos, count - copied);
+                Buffer.BlockCopy(buffer, offset + copied, _Buffer, _Pos, toCopy);
+                copied += toCopy;
+                _Pos += toCopy;
+                ProcessBlockIfNeeded();
             }
+        }
+
+        byte[] _Buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(32 * 10);
+        int _Pos;
+
+        public override void WriteByte(byte value)
+        {
+            _Buffer[_Pos++] = value;
+            ProcessBlockIfNeeded();
+        }
+
+        private bool ProcessBlockIfNeeded()
+        {
+            if (_Pos == _Buffer.Length)
+            {
+                ProcessBlock();
+                return true;
+            }
+            return false;
+        }
+
+
+        //Sha256Digest sha = new Sha256Digest();
+        //private void ProcessBlock()
+        //{
+        //    sha.BlockUpdate(_Buffer, 0, _Pos);
+        //    _Pos = 0;
+        //}
+
+        //public override uint256 GetHash()
+        //{
+        //    ProcessBlock();
+        //    sha.DoFinal(_Buffer, 0);
+        //    _Pos = 32;
+        //    ProcessBlock();
+        //    sha.DoFinal(_Buffer, 0);
+        //    return new uint256(_Buffer.Take(32).ToArray());
+        //}
+
+        SHA256Managed sha = new SHA256Managed();
+        private void ProcessBlock()
+        {
+            sha.TransformBlock(_Buffer, 0, _Pos, null, -1);
+            _Pos = 0;
+        }
+
+        static readonly byte[] Empty = new byte[0];
+        public override uint256 GetHash()
+        {
+            ProcessBlock();
+            sha.TransformFinalBlock(Empty, 0, 0);
+            var hash1 = sha.Hash;
+            Buffer.BlockCopy(sha.Hash, 0, _Buffer, 0, 32);
+            sha.Initialize();
+            sha.TransformFinalBlock(_Buffer, 0, 32);
+            var hash2 = sha.Hash;
+            return new uint256(hash2);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(_Buffer);
+            if (disposing)
+                sha.Dispose();
+            base.Dispose(disposing);
         }
     }
 }
+
+
