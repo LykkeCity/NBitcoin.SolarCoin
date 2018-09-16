@@ -55,6 +55,13 @@ namespace NBitcoin.SolarCoin
             return SolarCoinConsensusFactory.Instance;
         }
 
+        public new SolarCoinTransaction Clone()
+        {
+            var instance = (SolarCoinTransaction)GetConsensusFactory().CreateTransaction();
+            instance.FromBytes(this.ToBytes());
+            return instance;
+        }
+
         public override uint256 GetSignatureHash(Script scriptCode, int nIn, SigHash nHashType, Money amount,
             HashVersion sigversion, PrecomputedTransactionData precomputedTransactionData)
         {
@@ -113,7 +120,7 @@ namespace NBitcoin.SolarCoin
             var solarStream = new SolarCoinStream(stream.Inner, stream.Serializing);
 
             solarStream.ReadWriteVersionEncoded(ref nVersion);
-            if ((NType & (uint)(PrimaryActions.SER_GETHASH | PrimaryActions.SER_LEGACYPROTOCOL)) == 0 || 
+            if ((NType & (uint)(PrimaryActions.SER_GETHASH | PrimaryActions.SER_LEGACYPROTOCOL)) == 0 ||
                 nVersion > LEGACY_VERSION_3)
             {
                 solarStream.ReadWriteVersionEncoded(ref nTime);
@@ -124,13 +131,7 @@ namespace NBitcoin.SolarCoin
             }
 
             stream.ReadWrite<TxInList, TxIn>(ref vin);
-            Type vinType = vin.GetType();
-            //var vinTransactionSetter = vinType.GetProperty("Transaction", BindingFlags.Instance);
-            //vinTransactionSetter?.SetValue(vin, this);
-            ////vin.Transaction.
             stream.ReadWrite<TxOutList, TxOut>(ref vout);
-            //var voutTransactionSetter = vout.GetType().GetProperty("Transaction", BindingFlags.Instance);
-            //voutTransactionSetter?.SetValue(vout, this);
             solarStream.ReadWriteStruct(ref nLockTime);
 
             if (nVersion > LEGACY_VERSION_1)
@@ -144,18 +145,11 @@ namespace NBitcoin.SolarCoin
             }
         }
 
-        public uint256 GetHashCheat()
+        public new uint256 GetHash()
         {
             var previousType = this.NType;
             this.NType = (uint)PrimaryActions.SER_GETHASH;
             uint256 h = null;
-
-            //using (var cheat = new BLAKE2bWriter())
-            //{
-            //    this.ReadWrite(cheat);
-
-            //    h = cheat.GetHash();
-            //}
 
             using (var hs = new HashStreamCheat())
             {
