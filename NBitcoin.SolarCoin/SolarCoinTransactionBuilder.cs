@@ -113,13 +113,13 @@ namespace NBitcoin.SolarCoin
 
         internal class TransactionSigningContext
         {
-            public TransactionSigningContext(SolarCoinTransactionBuilder builder, Transaction transaction)
+            public TransactionSigningContext(SolarCoinTransactionBuilder builder, SolarCoinTransaction transaction)
             {
                 Builder = builder;
                 Transaction = transaction;
             }
 
-            public Transaction Transaction
+            public SolarCoinTransaction Transaction
             {
                 get;
                 set;
@@ -1085,22 +1085,22 @@ namespace NBitcoin.SolarCoin
             return selection;
         }
 
-        public Transaction SignTransaction(Transaction transaction, SigHash sigHash)
+        public SolarCoinTransaction SignTransaction(SolarCoinTransaction transaction, SigHash sigHash)
         {
             var tx = transaction.Clone();
             SignTransactionInPlace(tx, sigHash);
             return tx;
         }
 
-        public Transaction SignTransaction(Transaction transaction)
+        public SolarCoinTransaction SignTransaction(SolarCoinTransaction transaction)
         {
             return SignTransaction(transaction, SigHash.All);
         }
-        public Transaction SignTransactionInPlace(Transaction transaction)
+        public SolarCoinTransaction SignTransactionInPlace(SolarCoinTransaction transaction)
         {
             return SignTransactionInPlace(transaction, SigHash.All);
         }
-        public Transaction SignTransactionInPlace(Transaction transaction, SigHash sigHash)
+        public SolarCoinTransaction SignTransactionInPlace(SolarCoinTransaction transaction, SigHash sigHash)
         {
             TransactionSigningContext ctx = new TransactionSigningContext(this, transaction);
             if (transaction is IHasForkId hasForkId)
@@ -1155,7 +1155,7 @@ namespace NBitcoin.SolarCoin
         /// </summary>
         /// <param name="tx">The transaction to check</param>
         /// <returns>True if no error</returns>
-        public bool Verify(Transaction tx)
+        public bool Verify(SolarCoinTransaction tx)
         {
             TransactionPolicyError[] errors;
             return Verify(tx, null as Money, out errors);
@@ -1166,7 +1166,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx">The transaction to check</param>
         /// <param name="expectedFees">The expected fees (more or less 10%)</param>
         /// <returns>True if no error</returns>
-        public bool Verify(Transaction tx, Money expectedFees)
+        public bool Verify(SolarCoinTransaction tx, Money expectedFees)
         {
             TransactionPolicyError[] errors;
             return Verify(tx, expectedFees, out errors);
@@ -1178,7 +1178,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx">The transaction to check</param>
         /// <param name="expectedFeeRate">The expected fee rate</param>
         /// <returns>True if no error</returns>
-        public bool Verify(Transaction tx, FeeRate expectedFeeRate)
+        public bool Verify(SolarCoinTransaction tx, FeeRate expectedFeeRate)
         {
             TransactionPolicyError[] errors;
             return Verify(tx, expectedFeeRate, out errors);
@@ -1190,18 +1190,18 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx">The transaction to check</param>
         /// <param name="errors">Detected errors</param>
         /// <returns>True if no error</returns>
-        public bool Verify(Transaction tx, out TransactionPolicyError[] errors)
+        public bool Verify(SolarCoinTransaction tx, out TransactionPolicyError[] errors)
         {
             return Verify(tx, null as Money, out errors);
         }
         /// <summary>
-        /// Verify that a transaction is fully signed, have enough fees, and follow the Standard and Miner Transaction Policy rules
+        /// Verify that a transaction is fully signed, have enough fees, and follow the Standard and Miner SolarCoinTransaction Policy rules
         /// </summary>
         /// <param name="tx">The transaction to check</param>
         /// <param name="expectedFees">The expected fees (more or less 10%)</param>
         /// <param name="errors">Detected errors</param>
         /// <returns>True if no error</returns>
-        public bool Verify(Transaction tx, Money expectedFees, out TransactionPolicyError[] errors)
+        public bool Verify(SolarCoinTransaction tx, Money expectedFees, out TransactionPolicyError[] errors)
         {
             if (tx == null)
                 throw new ArgumentNullException(nameof(tx));
@@ -1233,7 +1233,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="expectedFeeRate">The expected fee rate</param>
         /// <param name="errors">Detected errors</param>
         /// <returns>True if no error</returns>
-        public bool Verify(Transaction tx, FeeRate expectedFeeRate, out TransactionPolicyError[] errors)
+        public bool Verify(SolarCoinTransaction tx, FeeRate expectedFeeRate, out TransactionPolicyError[] errors)
         {
             if (tx == null)
                 throw new ArgumentNullException(nameof(tx));
@@ -1245,7 +1245,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx">he transaction to check</param>
         /// <param name="expectedFeeRate">The expected fee rate</param>
         /// <returns>Detected errors</returns>
-        public TransactionPolicyError[] Check(Transaction tx, FeeRate expectedFeeRate)
+        public TransactionPolicyError[] Check(SolarCoinTransaction tx, FeeRate expectedFeeRate)
         {
             return Check(tx, expectedFeeRate == null ? null : expectedFeeRate.GetFee(tx));
         }
@@ -1255,7 +1255,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx">he transaction to check</param>
         /// <param name="expectedFee">The expected fee</param>
         /// <returns>Detected errors</returns>
-        public TransactionPolicyError[] Check(Transaction tx, Money expectedFee)
+        public TransactionPolicyError[] Check(SolarCoinTransaction tx, Money expectedFee)
         {
             TransactionPolicyError[] errors;
             Verify(tx, expectedFee, out errors);
@@ -1266,7 +1266,7 @@ namespace NBitcoin.SolarCoin
         /// </summary>
         /// <param name="tx">he transaction to check</param>
         /// <returns>Detected errors</returns>
-        public TransactionPolicyError[] Check(Transaction tx)
+        public TransactionPolicyError[] Check(SolarCoinTransaction tx)
         {
             return Check(tx, null as Money);
         }
@@ -1290,7 +1290,7 @@ namespace NBitcoin.SolarCoin
         /// </summary>
         /// <param name="tx">The transaction</param>
         /// <returns>Array of size tx.Input.Count, if a coin is not fund, a null coin is returned.</returns>
-        public ICoin[] FindSpentCoins(Transaction tx)
+        public ICoin[] FindSpentCoins(SolarCoinTransaction tx)
         {
             return
                 tx
@@ -1304,7 +1304,7 @@ namespace NBitcoin.SolarCoin
         /// </summary>
         /// <param name="tx">The transaction to be estimated</param>
         /// <returns></returns>
-        public int EstimateSize(Transaction tx)
+        public int EstimateSize(SolarCoinTransaction tx)
         {
             return EstimateSize(tx, false);
         }
@@ -1315,7 +1315,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx">The transaction to be estimated</param>
         /// <param name="virtualSize">If true, returns the size on which fee calculation are based, else returns the physical byte size</param>
         /// <returns></returns>
-        public int EstimateSize(Transaction tx, bool virtualSize)
+        public int EstimateSize(SolarCoinTransaction tx, bool virtualSize)
         {
             //TODO: Fix it
             return 0;
@@ -1332,7 +1332,7 @@ namespace NBitcoin.SolarCoin
             //return witSize + baseSize;
         }
 
-        public void EstimateSizes(Transaction tx, out int witSize, out int baseSize)
+        public void EstimateSizes(SolarCoinTransaction tx, out int witSize, out int baseSize)
         {
             if (tx == null)
                 throw new ArgumentNullException(nameof(tx));
@@ -1458,7 +1458,7 @@ namespace NBitcoin.SolarCoin
         /// <param name="tx"></param>
         /// <param name="feeRate">Fee rate</param>
         /// <returns></returns>
-        public Money EstimateFees(Transaction tx, FeeRate feeRate)
+        public Money EstimateFees(SolarCoinTransaction tx, FeeRate feeRate)
         {
             if (tx == null)
                 throw new ArgumentNullException(nameof(tx));
@@ -1491,45 +1491,17 @@ namespace NBitcoin.SolarCoin
             ScriptCoin scriptCoin = coin as ScriptCoin;
 
             Script signatures = null;
-            if (coin.GetHashVersion() == HashVersion.Witness)
-            {
-                signatures = txIn.WitScript;
-                if (scriptCoin != null)
-                {
-                    if (scriptCoin.IsP2SH)
-                        txIn.ScriptSig = Script.Empty;
-                    if (scriptCoin.RedeemType == RedeemType.WitnessV0)
-                        signatures = RemoveRedeem(signatures);
-                }
-            }
-            else
-            {
-                signatures = txIn.ScriptSig;
-                if (scriptCoin != null && scriptCoin.RedeemType == RedeemType.P2SH)
-                    signatures = RemoveRedeem(signatures);
-            }
 
+            signatures = txIn.ScriptSig;
+            if (scriptCoin != null && scriptCoin.RedeemType == RedeemType.P2SH)
+                signatures = RemoveRedeem(signatures);
 
             signatures = CombineScriptSigs(coin, scriptSig, signatures);
 
-            if (coin.GetHashVersion() == HashVersion.Witness)
+            txIn.ScriptSig = signatures;
+            if (scriptCoin != null && scriptCoin.RedeemType == RedeemType.P2SH)
             {
-                txIn.WitScript = signatures;
-                if (scriptCoin != null)
-                {
-                    if (scriptCoin.IsP2SH)
-                        txIn.ScriptSig = new Script(Op.GetPushOp(scriptCoin.GetP2SHRedeem().ToBytes(true)));
-                    if (scriptCoin.RedeemType == RedeemType.WitnessV0)
-                        txIn.WitScript = txIn.WitScript + new WitScript(Op.GetPushOp(scriptCoin.Redeem.ToBytes(true)));
-                }
-            }
-            else
-            {
-                txIn.ScriptSig = signatures;
-                if (scriptCoin != null && scriptCoin.RedeemType == RedeemType.P2SH)
-                {
-                    txIn.ScriptSig = input.ScriptSig + Op.GetPushOp(scriptCoin.GetP2SHRedeem().ToBytes(true));
-                }
+                txIn.ScriptSig = input.ScriptSig + Op.GetPushOp(scriptCoin.GetP2SHRedeem().ToBytes(true));
             }
         }
 
@@ -1701,7 +1673,7 @@ namespace NBitcoin.SolarCoin
             return this;
         }
 
-        public SolarCoinTransactionBuilder AddCoins(Transaction transaction)
+        public SolarCoinTransactionBuilder AddCoins(SolarCoinTransaction transaction)
         {
             var txId = transaction.GetHash();
             AddCoins(transaction.Outputs.Select((o, i) => new Coin(txId, (uint)i, o.Value, o.ScriptPubKey)).ToArray());
@@ -1720,14 +1692,14 @@ namespace NBitcoin.SolarCoin
             return this;
         }
 
-        public Transaction CombineSignatures(params Transaction[] transactions)
+        public SolarCoinTransaction CombineSignatures(params SolarCoinTransaction[] transactions)
         {
             if (transactions.Length == 1)
                 return transactions[0];
             if (transactions.Length == 0)
                 return null;
 
-            Transaction tx = transactions[0].Clone();
+            SolarCoinTransaction tx = transactions[0].Clone();
             for (int i = 1; i < transactions.Length; i++)
             {
                 var signed = transactions[i];
@@ -1746,7 +1718,7 @@ namespace NBitcoin.SolarCoin
             }
         }
 
-        private Transaction CombineSignaturesCore(Transaction signed1, Transaction signed2)
+        private SolarCoinTransaction CombineSignaturesCore(SolarCoinTransaction signed1, SolarCoinTransaction signed2)
         {
             if (signed1 == null)
                 return signed2;

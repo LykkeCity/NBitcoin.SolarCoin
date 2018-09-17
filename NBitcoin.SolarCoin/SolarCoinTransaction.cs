@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using NBitcoin.Crypto;
+using NBitcoin.SolarCoin.Extensions;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Utilities;
 
@@ -65,8 +66,79 @@ namespace NBitcoin.SolarCoin
         public override uint256 GetSignatureHash(Script scriptCode, int nIn, SigHash nHashType, Money amount,
             HashVersion sigversion, PrecomputedTransactionData precomputedTransactionData)
         {
-            //TODO: Find right algo
-            return uint256.Zero;
+            if (nIn >= Inputs.Count)
+            {
+                //Utils.log("ERROR: SignatureHash() : nIn=" + nIn + " out of range\n");
+                return uint256.One;
+            }
+
+            var hashType = nHashType & (SigHash)31;
+
+            // Check for invalid use of SIGHASH_SINGLE
+            if (hashType == SigHash.Single)
+            {
+                if (nIn >= Outputs.Count)
+                {
+                    //Utils.log("ERROR: SignatureHash() : nOut=" + nIn + " out of range\n");
+                    return uint256.One;
+                }
+            }
+
+            var scriptCopy = new Script(scriptCode.ToBytes());
+            scriptCopy = scriptCopy.FindAndDelete(OpcodeType.OP_CODESEPARATOR);
+
+            var txCopy = GetConsensusFactory().CreateTransaction();
+            txCopy.FromBytes(this.ToBytes());
+            //Set all TxIn script to empty string
+            foreach (var txin in txCopy.Inputs)
+            {
+                txin.ScriptSig = new Script();
+            }
+            //Copy subscript into the txin script you are checking
+            txCopy.Inputs[nIn].ScriptSig = scriptCopy;
+
+            if (hashType == SigHash.None)
+            {
+                //The output of txCopy is set to a vector of zero size.
+                txCopy.Outputs.Clear();
+
+                //All other inputs aside from the current input in txCopy have their nSequence index set to zero
+                foreach (var input in txCopy.Inputs.Where((x, i) => i != nIn))
+                    input.Sequence = 0;
+            }
+            else if (hashType == SigHash.Single)
+            {
+                //The output of txCopy is resized to the size of the current input index+1.
+                txCopy.Outputs.RemoveRange(nIn + 1, txCopy.Outputs.Count - (nIn + 1));
+                //All other txCopy outputs aside from the output that is the same as the current input index are set to a blank script and a value of (long) -1.
+                for (var i = 0; i < txCopy.Outputs.Count; i++)
+                {
+                    if (i == nIn)
+                        continue;
+                    txCopy.Outputs[i] = new TxOut();
+                }
+                //All other txCopy inputs aside from the current input are set to have an nSequence index of zero.
+                foreach (var input in txCopy.Inputs.Where((x, i) => i != nIn))
+                    input.Sequence = 0;
+            }
+
+
+            if ((nHashType & SigHash.AnyoneCanPay) != 0)
+            {
+                //The txCopy input vector is resized to a length of one.
+                var script = txCopy.Inputs[nIn];
+                txCopy.Inputs.Clear();
+                txCopy.Inputs.Add(script);
+                //The subScript (lead in by its length as a var-integer encoded!) is set as the first and only member of this vector.
+                txCopy.Inputs[0].ScriptSig = scriptCopy;
+            }
+
+
+            //Serialize TxCopy, append 4 byte hashtypecode
+            var stream = CreateHashWriter(sigversion);
+            txCopy.ReadWrite(stream);
+            stream.ReadWrite((uint)nHashType);
+            return GetHash(stream);
         }
 
         private BitcoinStream CreateHashWriter(HashVersion version)

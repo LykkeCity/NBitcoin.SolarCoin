@@ -4,7 +4,7 @@ namespace NBitcoin.SolarCoin.Tests
 {
     public class SolarCoinTests
     {
-        private  Network _solarNetwork = SolarCoinNetworks.Instance.Mainnet;
+        private Network _solarNetwork = SolarCoinNetworks.Instance.Mainnet;
 
         static SolarCoinTests()
         {
@@ -20,7 +20,7 @@ namespace NBitcoin.SolarCoin.Tests
 
             Assert.Equal(_solarNetwork.Name, BitcoinAddress.Create(address).Network.Name);
             Assert.Equal(address, key.PubKey.GetAddress(_solarNetwork).ToString());
-		}
+        }
 
         [Fact]
         public void ShouldGenerateAndParsePrivateKey()
@@ -28,10 +28,11 @@ namespace NBitcoin.SolarCoin.Tests
             var key = new Key();
             var secret = key.GetBitcoinSecret(_solarNetwork).PrivateKey.ToString(_solarNetwork);
             var parsedKey = Key.Parse(secret, _solarNetwork);
+            var publickKey = parsedKey.PubKey.ToString();
             var parsedAddress = parsedKey.PubKey.GetAddress(_solarNetwork).ToString();
 
             Assert.Equal(_solarNetwork.Name, BitcoinAddress.Create(parsedAddress).Network.Name);
-            Assert.Equal(parsedKey.PubKey.GetAddress(_solarNetwork).ToString(), 
+            Assert.Equal(parsedKey.PubKey.GetAddress(_solarNetwork).ToString(),
                 key.PubKey.GetAddress(_solarNetwork).ToString());
         }
     }
