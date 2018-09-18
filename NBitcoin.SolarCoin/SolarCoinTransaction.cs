@@ -33,19 +33,22 @@ namespace NBitcoin.SolarCoin
         private const int LEGACY_VERSION_2 = 2; // V3 - Includes nTime
         private const int LEGACY_VERSION_3 = 3; // V4 - Includes nTime in tx hash
         private const int CURRENT_VERSION = 4;
-
+        private const uint _nBestHeight = 2444966;
+        private const int LAST_POW_BLOCK = 835213;
+        private const int FORK_HEIGHT_1 = 1177000;
         #endregion
 
         public SolarCoinTransaction()
         {
-            Version = CURRENT_VERSION;
+            InitTransaction();
         }
 
         public SolarCoinTransaction(string hex) : base(hex)
         {
+            InitTransaction();
         }
 
-        public uint NTime { get; protected set; }
+        public uint NTime { get; set; }
 
         public uint NType { get; protected set; }
 
@@ -94,6 +97,7 @@ namespace NBitcoin.SolarCoin
             {
                 txin.ScriptSig = new Script();
             }
+
             //Copy subscript into the txin script you are checking
             txCopy.Inputs[nIn].ScriptSig = scriptCopy;
 
@@ -117,6 +121,7 @@ namespace NBitcoin.SolarCoin
                         continue;
                     txCopy.Outputs[i] = new TxOut();
                 }
+
                 //All other txCopy inputs aside from the current input are set to have an nSequence index of zero.
                 foreach (var input in txCopy.Inputs.Where((x, i) => i != nIn))
                     input.Sequence = 0;
@@ -146,7 +151,8 @@ namespace NBitcoin.SolarCoin
             var hs = CreateSignatureHashStream();
             BitcoinStream stream = new BitcoinStream(hs, true);
             stream.Type = SerializationType.Hash;
-            stream.TransactionOptions = version == HashVersion.Original ? TransactionOptions.None : TransactionOptions.Witness;
+            stream.TransactionOptions =
+                version == HashVersion.Original ? TransactionOptions.None : TransactionOptions.Witness;
             return stream;
         }
 
@@ -247,6 +253,32 @@ namespace NBitcoin.SolarCoin
         {
             return new HashStream();
         }
+
+        //TODO: Figure out the best strategy to select Adjusted time
+        protected uint GetAdjustedTime()
+        {
+            var expirationForTx = DateTime.UtcNow + TimeSpan.FromDays(2);
+            var expirationInUnixTime = expirationForTx.ToUnixTimestamp();
+
+            return (uint)expirationInUnixTime;
+        }
+
+        protected void InitTransaction()
+        {
+            if (_nBestHeight >= LAST_POW_BLOCK)
+            {
+                if (Version == 0 || Version == 1)
+                {
+                    if (_nBestHeight >= FORK_HEIGHT_1)
+                        Version = CURRENT_VERSION;
+                    else
+                        Version = LEGACY_VERSION_3;
+                }
+
+                if (NTime == 0)
+                    NTime = GetAdjustedTime();
+            }
+        }
     }
 
     /// <summary>
@@ -256,51 +288,32 @@ namespace NBitcoin.SolarCoin
     {
         public HashStreamCheat()
         {
-
         }
 
         public override bool CanRead
         {
-            get
-            {
-                throw new NotImplementedException();
-            }
+            get { throw new NotImplementedException(); }
         }
 
         public override bool CanSeek
         {
-            get
-            {
-                throw new NotImplementedException();
-            }
+            get { throw new NotImplementedException(); }
         }
 
         public override bool CanWrite
         {
-            get
-            {
-                throw new NotImplementedException();
-            }
+            get { throw new NotImplementedException(); }
         }
 
         public override long Length
         {
-            get
-            {
-                throw new NotImplementedException();
-            }
+            get { throw new NotImplementedException(); }
         }
 
         public override long Position
         {
-            get
-            {
-                throw new NotImplementedException();
-            }
-            set
-            {
-                throw new NotImplementedException();
-            }
+            get { throw new NotImplementedException(); }
+            set { throw new NotImplementedException(); }
         }
 
         public override void Flush()
@@ -372,6 +385,7 @@ namespace NBitcoin.SolarCoin
                 ProcessBlock();
                 return true;
             }
+
             return false;
         }
 
@@ -394,6 +408,7 @@ namespace NBitcoin.SolarCoin
         //}
 
         SHA256Managed sha = new SHA256Managed();
+
         private void ProcessBlock()
         {
             sha.TransformBlock(_Buffer, 0, _Pos, null, -1);
@@ -401,6 +416,7 @@ namespace NBitcoin.SolarCoin
         }
 
         static readonly byte[] Empty = new byte[0];
+
         public override uint256 GetHash()
         {
             ProcessBlock();
@@ -422,5 +438,3 @@ namespace NBitcoin.SolarCoin
         }
     }
 }
-
-
