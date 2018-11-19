@@ -65,7 +65,65 @@ namespace NBitcoin.SolarCoin
             instance.FromBytes(this.ToBytes());
             return instance;
         }
+        /*
+            if (nIn >= txTo.vin.size())
+            {
+                printf("ERROR: SignatureHash() : nIn=%d out of range\n", nIn);
+                return 1;
+            }
+            CTransaction txTmp(txTo);
 
+            // In case concatenating two scripts ends up with two codeseparators,
+            // or an extra one at the end, this prevents all those possible incompatibilities.
+            scriptCode.FindAndDelete(CScript(OP_CODESEPARATOR));
+
+            // Blank out other inputs' signatures
+            for (unsigned int i = 0; i < txTmp.vin.size(); i++)
+                txTmp.vin[i].scriptSig = CScript();
+            txTmp.vin[nIn].scriptSig = scriptCode;
+
+            // Blank out some of the outputs
+            if ((nHashType & 0x1f) == SIGHASH_NONE)
+            {
+                // Wildcard payee
+                txTmp.vout.clear();
+
+                // Let the others update at will
+                for (unsigned int i = 0; i < txTmp.vin.size(); i++)
+                    if (i != nIn)
+                        txTmp.vin[i].nSequence = 0;
+            }
+            else if ((nHashType & 0x1f) == SIGHASH_SINGLE)
+            {
+                // Only lock-in the txout payee at same index as txin
+                unsigned int nOut = nIn;
+                if (nOut >= txTmp.vout.size())
+                {
+                    printf("ERROR: SignatureHash() : nOut=%d out of range\n", nOut);
+                    return 1;
+                }
+                txTmp.vout.resize(nOut+1);
+                for (unsigned int i = 0; i < nOut; i++)
+                    txTmp.vout[i].SetNull();
+
+                // Let the others update at will
+                for (unsigned int i = 0; i < txTmp.vin.size(); i++)
+                    if (i != nIn)
+                        txTmp.vin[i].nSequence = 0;
+            }
+
+            // Blank out other inputs completely, not recommended for open transactions
+            if (nHashType & SIGHASH_ANYONECANPAY)
+            {
+                txTmp.vin[0] = txTmp.vin[nIn];
+                txTmp.vin.resize(1);
+            }
+
+            // Serialize and hash
+            CHashWriter ss(SER_GETHASH, 0);
+            ss << txTmp << nHashType;
+            return ss.GetHash();
+         */
         public override uint256 GetSignatureHash(Script scriptCode, int nIn, SigHash nHashType, Money amount,
             HashVersion sigversion, PrecomputedTransactionData precomputedTransactionData)
         {
@@ -75,22 +133,22 @@ namespace NBitcoin.SolarCoin
                 return uint256.One;
             }
 
-            var hashType = nHashType & (SigHash)31;
-
-            // Check for invalid use of SIGHASH_SINGLE
-            if (hashType == SigHash.Single)
-            {
-                if (nIn >= Outputs.Count)
-                {
-                    //Utils.log("ERROR: SignatureHash() : nOut=" + nIn + " out of range\n");
-                    return uint256.One;
-                }
-            }
-
             var scriptCopy = new Script(scriptCode.ToBytes());
             scriptCopy = scriptCopy.FindAndDelete(OpcodeType.OP_CODESEPARATOR);
 
-            var txCopy = GetConsensusFactory().CreateTransaction();
+            var hashType = nHashType & (SigHash)31;
+
+            // Check for invalid use of SIGHASH_SINGLE
+            //if (hashType == SigHash.Single)
+            //{
+            //    if (nIn >= Outputs.Count)
+            //    {
+            //        //Utils.log("ERROR: SignatureHash() : nOut=" + nIn + " out of range\n");
+            //        return uint256.One;
+            //    }
+            //}
+
+            var txCopy = (SolarCoinTransaction)GetConsensusFactory().CreateTransaction();
             txCopy.FromBytes(this.ToBytes());
             //Set all TxIn script to empty string
             foreach (var txin in txCopy.Inputs)
@@ -112,13 +170,18 @@ namespace NBitcoin.SolarCoin
             }
             else if (hashType == SigHash.Single)
             {
+                if (nIn >= Outputs.Count)
+                {
+                    //Utils.log("ERROR: SignatureHash() : nOut=" + nIn + " out of range\n");
+                    return uint256.One;
+                }
                 //The output of txCopy is resized to the size of the current input index+1.
                 txCopy.Outputs.RemoveRange(nIn + 1, txCopy.Outputs.Count - (nIn + 1));
                 //All other txCopy outputs aside from the output that is the same as the current input index are set to a blank script and a value of (long) -1.
-                for (var i = 0; i < txCopy.Outputs.Count; i++)
+                for (var i = 0; i < nIn; i++)
                 {
-                    if (i == nIn)
-                        continue;
+                    //if (i == nIn)
+                    //    continue;
                     txCopy.Outputs[i] = new TxOut();
                 }
 
@@ -127,7 +190,6 @@ namespace NBitcoin.SolarCoin
                     input.Sequence = 0;
             }
 
-
             if ((nHashType & SigHash.AnyoneCanPay) != 0)
             {
                 //The txCopy input vector is resized to a length of one.
@@ -135,15 +197,19 @@ namespace NBitcoin.SolarCoin
                 txCopy.Inputs.Clear();
                 txCopy.Inputs.Add(script);
                 //The subScript (lead in by its length as a var-integer encoded!) is set as the first and only member of this vector.
-                txCopy.Inputs[0].ScriptSig = scriptCopy;
+                //txCopy.Inputs[0].ScriptSig = scriptCopy;
             }
 
-
+            var previousType = txCopy.NType;
+            txCopy.NType = (uint)PrimaryActions.SER_GETHASH;
             //Serialize TxCopy, append 4 byte hashtypecode
             var stream = CreateHashWriter(sigversion);
             txCopy.ReadWrite(stream);
             stream.ReadWrite((uint)nHashType);
-            return GetHash(stream);
+            var txHash= GetHash(stream);
+            txCopy.NType = previousType;
+
+            return txHash;
         }
 
         private BitcoinStream CreateHashWriter(HashVersion version)

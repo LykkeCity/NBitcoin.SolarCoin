@@ -46,21 +46,20 @@ namespace NBitcoin.SolarCoin.Tests
             "df233ea13a2affa4e540672308b1ac0000000000";
 
         public const string sourceTransactionV4 =
-            "04000000fb929f5b01e08a53a2eac72911bdc0717a9734333b4262cedd585f7b4444419515c7bd0206000000006a473044022055" +
-            "c410ea40af02a3014010e76720b2ba887e53d9fd73a04dffaddf02838972f4022003659bd11ec2342093fb960abcb08191902bb4b" +
-            "2322499e14b3a6f05dd3c37830121022fbfccab1268e53dabe147d06332f34c91a6d05a7720b1be2845b551ec9e0922ffffffff02" +
-            "aca29709000000001976a914fe64ecfb0a485e0a207d3317a32fa58df9c77b8388ac00e1f505000000001976a9147344f20ef196b" +
-            "346d4a083300eaa7b9df52c288188ac0000000000";
+            "040000008e07a25b01420b132b58f8f057618a052c5fc31ce1f503ba70155557a7956083bf425544c1010000006b483045022100" +
+            "868fed9adfd02c211759d4f90d1e3ea02f49fa365aeee717802037362f17fe81022020ab83a5a305340c9a0480d04dcf8c52329c" +
+            "dc42b1f58b60c2ef894649af89ed01210394d234ae892c5cf7170471ac96d001978ac92abcd588d481f9066a9c037d7933ffffff" +
+            "ff01c09ee605000000001976a914f47d46ed965a55d20ad725cc860188638083272f88ac0000000000";
 
         public const string transactionRawV4Signed =
-            "040000006fd8a05b01420b132b58f8f057618a052c5fc31ce1f503ba70155557a7956083bf425544c1010000006a473044022047e" +
-            "8a968b87d1e6f5d005fe88a9e5e211342ac698cdc62612fd32598767da5f102201a8f037e96736621613dd91ca04de752aa87d6c0" +
-            "d5f1f3428831871f5a28ff4b01210394d234ae892c5cf7170471ac96d001978ac92abcd588d481f9066a9c037d7933ffffffff01c" +
-            "09ee605000000001976a914f47d46ed965a55d20ad725cc860188638083272f88ac0000000000";
+            "040000001910a25b0100294dc9161151e6ed1a4931e164640258418ffda89d62404a494ef3c77eb051000000006b4830450221008" +
+            "2f9e56c3582a5c8ad7dba2b0753f249a7652ba7ad6b7d0251a8d1b220b28ae4022043d22064a11629a6993e7d59fc85f20e958132" +
+            "c89e5e41bd76218a2ec54c4f3d01210348c608d5e59dcaf0199559ccff6209b7711b557b02b3520bbf9894db3a22b6e5ffffffff0" +
+            "1805cd705000000001976a9147344f20ef196b346d4a083300eaa7b9df52c288188ac0000000000";
 
-        public const string transactionRawV4NotSigned = "040000006fd8a05b01420b132b58f8f057618a052c5fc31ce1f503ba70155" +
-                                                        "557a7956083bf425544c10100000000ffffffff01c09ee605000000001976a" +
-                                                        "914f47d46ed965a55d20ad725cc860188638083272f88ac0000000000";
+        public const string transactionRawV4NotSigned =
+            "040000001910a25b0100294dc9161151e6ed1a4931e164640258418ffda89d62404a494ef3c77eb0510000000000ffffffff01805" +
+            "cd705000000001976a9147344f20ef196b346d4a083300eaa7b9df52c288188ac0000000000";
 
         static SolarCoinTransactionTests()
         {
@@ -176,13 +175,13 @@ namespace NBitcoin.SolarCoin.Tests
             EnvInitializer.Init();
             var sourceTransaction = new SolarCoinTransaction(sourceTransactionV4);
             var env = System.Environment.GetEnvironmentVariables();
-            string privateKeyFromStr = System.Environment.GetEnvironmentVariable("FromSolarCoinPk");
-            string privateKeyToStr = System.Environment.GetEnvironmentVariable("ToSolarCoinPk");
+            string privateKeyFromStr = System.Environment.GetEnvironmentVariable("PK2");
+            string privateKeyToStr = System.Environment.GetEnvironmentVariable("PK1");
             string sourceTxHash = sourceTransaction.GetHash().ToString();//"c1445542bf836095a757551570ba03f5e11cc35f2c058a6157f0f8582b130b42";
-            uint n = 1;
+            uint n = 0;
             var transactionBuilder = new SolarCoinTransactionBuilder();
-            long sourceSatoshi = 100000000;//1 SLR
-            long amount = 100000000;//1 SLR
+            long sourceSatoshi = 99000000;//1 SLR
+            long amount = 99000000;//1 SLR
             var keyFrom = Key.Parse(privateKeyFromStr, _solarNetwork);
             var keyTo = Key.Parse(privateKeyToStr, _solarNetwork);
             var fromAddressPubkey = keyFrom.ScriptPubKey;
@@ -222,7 +221,7 @@ namespace NBitcoin.SolarCoin.Tests
             var txNotSigned = transactionBuilder.BuildTransaction(false);
             var spentCoins = transactionBuilder.FindSpentCoins(txNotSigned);
             SolarCoinTransaction txSigned;
-            txNotSigned.NTime = 1537267823;
+            txNotSigned.NTime = 1537347609;// + (uint)TimeSpan.FromDays(2).TotalSeconds;
 
             try
             {
@@ -246,21 +245,29 @@ namespace NBitcoin.SolarCoin.Tests
             var txRawV4NotSigned = new SolarCoinTransaction(transactionRawV4NotSigned);
             var txRawV4Signed = new SolarCoinTransaction(transactionRawV4Signed);
 
+            Assert.True(Script.VerifyScript(fromAddressPubkey, txSigned, 
+                0, 
+                amountMoney, 
+                ScriptVerify.Standard, 
+                SigHash.All));
             Assert.Equal(transactionRawV4NotSigned, rawTransactionNotSigned);
             //TODO: Investigate signing issues.
-            //Assert.Equal(transactionRawV4Signed, rawTransactionSigned);
+            Assert.Equal(transactionRawV4Signed, rawTransactionSigned);
             Assert.Equal(txRawV4Signed.NTime, txSignedRestored.NTime);
             Assert.Equal(txRawV4Signed.NType, txSignedRestored.NType);
             Assert.Equal(txRawV4Signed.TransactionComment, txSignedRestored.TransactionComment);
             Assert.Equal(txRawV4Signed.Version, txSignedRestored.Version);
             Assert.Equal(txRawV4Signed.LockTime, txSignedRestored.LockTime);
             Assert.Equal(txRawV4Signed.Inputs[0].Sequence, txSignedRestored.Inputs[0].Sequence);
-            Assert.Equal(txRawV4Signed.Inputs[0].ScriptSig.Hash, txSignedRestored.Inputs[0].ScriptSig.Hash);//ScriptSig Is not correct
+            //TODO:ScriptSig Is not correct
+            Assert.Equal(txRawV4Signed.Inputs[0].ScriptSig.Hash, txSignedRestored.Inputs[0].ScriptSig.Hash);
             Assert.Equal(txRawV4Signed.Inputs[0].PrevOut.N, txSignedRestored.Inputs[0].PrevOut.N);
             Assert.Equal(txRawV4Signed.Inputs[0].PrevOut.Hash, txSignedRestored.Inputs[0].PrevOut.Hash);
             Assert.Equal(txRawV4Signed.TotalOut, txSignedRestored.TotalOut);
             Assert.Equal(txRawV4Signed.Outputs[0].ScriptPubKey, txSignedRestored.Outputs[0].ScriptPubKey);
             Assert.Equal(txRawV4Signed.Outputs[0].Value, txSignedRestored.Outputs[0].Value);
+
+            Assert.Equal(txRawV4Signed.GetHash(), txSignedRestored.GetHash());
         }
 
 
